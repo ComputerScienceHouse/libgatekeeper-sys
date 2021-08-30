@@ -99,11 +99,16 @@ impl NfcTag<'_> {
         }
     }
 
-    pub fn issue(&mut self, system_secret: &str, realm: &mut Realm) -> Result<(), ()> {
+    pub fn issue(&mut self, system_secret: &str, in_realms: Vec<&mut Realm>) -> Result<(), ()> {
         let system_secret = CString::new(system_secret).unwrap();
-        let realms = &mut realm.realm;
+        let mut realms: Vec<*mut ffi::realm_t> =
+            Vec::with_capacity(in_realms.len());
+        for realm in in_realms {
+            realms.push(realm.realm);
+        }
         unsafe {
-            let issue_result = ffi::issue_tag(self.tag, system_secret.as_ptr(), realms as *mut _, 1);
+            let issue_result = ffi::issue_tag(self.tag, system_secret.as_ptr(),
+                                              realms.as_mut_ptr(), realms.len());
             if issue_result != 0 { return Err(()); }
             return Ok(());
         }
