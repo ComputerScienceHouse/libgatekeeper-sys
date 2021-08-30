@@ -1,0 +1,13 @@
+[package]
+name = "libgatekeeper-sys"
+version = "0.1.0"
+authors = [
+  "Mary Strodl <ipadlover8322@gmail.com>",
+  "Nick Mosher <nicholastmosher@gmail.com>"
+]
+edition = "2018"
+license = "MIT"
+description = "Rust Bindings for libgatekeeper"
+repository = "https://github.com/mstrodl/libgatekeeper-sys"
+
+[dependencies]
