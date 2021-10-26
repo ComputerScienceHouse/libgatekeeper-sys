@@ -22,6 +22,8 @@ extern {
 
     pub fn realm_free(realm: *mut realm_t);
 
+    pub fn format_tag(tag: *mut mifare_t) -> i32;
+
     pub fn issue_tag(
         tag: *mut mifare_t,
         system_secret: *const c_char,
