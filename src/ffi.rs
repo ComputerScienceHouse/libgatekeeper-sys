@@ -22,11 +22,16 @@ extern {
 
     pub fn realm_free(realm: *mut realm_t);
 
-    pub fn format_tag(tag: *mut mifare_t) -> i32;
+    pub fn format_tag(
+        tag: *mut mifare_t,
+        uid: *const c_char,
+        system_secret: *const c_char
+    ) -> i32;
 
     pub fn issue_tag(
         tag: *mut mifare_t,
         system_secret: *const c_char,
+        uid: *const c_char,
         realms: *mut *mut c_void,
         num_realms: usize,
     ) -> i32;

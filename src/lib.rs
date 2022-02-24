@@ -3,6 +3,7 @@
 use std::mem::MaybeUninit;
 use std::ffi::{CString, CStr};
 use std::marker::PhantomData;
+use std::ptr;
 
 pub mod ffi;
 
@@ -99,16 +100,46 @@ impl NfcTag<'_> {
         }
     }
 
-    pub fn format(&mut self) -> Result<(), ()> {
+    pub fn format(&mut self, uid: Option<&str>, system_secret: Option<&str>) -> Result<(), ()> {
+        let uid_opt = match uid {
+            Some(uid) => CString::new(uid).ok(),
+            None => None,
+        };
+        let uid = match &uid_opt {
+            Some(uid) => uid.as_ptr(),
+            None => ptr::null(),
+        };
+        let system_secret_opt = match system_secret {
+            Some(system_secret) => CString::new(system_secret).ok(),
+            None => None,
+        };
+        let system_secret = match &system_secret_opt {
+            Some(system_secret) => system_secret.as_ptr(),
+            None => ptr::null(),
+        };
+
         unsafe {
-            let format_result = ffi::format_tag(self.tag);
+            let format_result = ffi::format_tag(
+                self.tag,
+                uid,
+                system_secret,
+            );
             if format_result != 0 { return Err(()); }
             return Ok(());
         }
     }
 
-    pub fn issue(&mut self, system_secret: &str, in_realms: Vec<&mut Realm>) -> Result<(), ()> {
+    pub fn issue(&mut self, system_secret: &str, uid: Option<&str>, in_realms: Vec<&mut Realm>) -> Result<(), ()> {
         let system_secret = CString::new(system_secret).unwrap();
+        let uid_opt = match uid {
+            Some(uid) => CString::new(uid).ok(),
+            None => None,
+        };
+        let uid = match &uid_opt {
+            Some(uid) => uid.as_ptr(),
+            None => ptr::null(),
+        };
+
         let mut realms: Vec<*mut ffi::realm_t> =
             Vec::with_capacity(in_realms.len());
         for realm in in_realms {
@@ -116,6 +147,7 @@ impl NfcTag<'_> {
         }
         unsafe {
             let issue_result = ffi::issue_tag(self.tag, system_secret.as_ptr(),
+                                              uid,
                                               realms.as_mut_ptr(), realms.len());
             if issue_result != 0 { return Err(()); }
             return Ok(());
