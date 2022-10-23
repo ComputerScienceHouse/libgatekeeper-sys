@@ -184,8 +184,7 @@ impl<'b> NfcDevice<'b> {
         }
     }
     pub fn send(&self, command: Command) -> Result<Option<Response>, NfcError> {
-        let mut response = Vec::with_capacity(command.le.unwrap_or(0).into());
-        unsafe { response.set_len(command.le.unwrap_or(0).into()) };
+        let mut response = vec![0u8; command.le.unwrap_or(0).into()];
         let command: Vec<u8> = command.into();
         println!("{:02X?}", command);
         let response_size = unsafe {
@@ -194,7 +193,7 @@ impl<'b> NfcDevice<'b> {
                 command.as_ptr(),
                 command.len(),
                 response.as_mut_ptr(),
-                response.capacity(),
+                response.len(),
                 2000,
             )
         };
