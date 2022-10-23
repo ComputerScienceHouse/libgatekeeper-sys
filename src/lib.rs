@@ -124,8 +124,6 @@ impl<'b> NfcDevice<'b> {
         })
     }
     pub fn first_mobile_tag(&self, realm: &Realm) -> Option<MobileNfcTag> {
-        // println!("Mobile tag pls");
-
         if unsafe {
             ffi::nfc_initiator_init(self.device)
         } < 0 {
@@ -136,7 +134,6 @@ impl<'b> NfcDevice<'b> {
             };
             return None;
         }
-        // println!("NFC initiator init");
 
         unsafe {
             ffi::nfc_device_set_property_bool(self.device, NfcProperty::NP_ACTIVATE_FIELD, 1)
@@ -167,7 +164,6 @@ impl<'b> NfcDevice<'b> {
                 vec![0xf0, 0x63, 0x73, 0x68, 0x72, 0x69, 0x74 + realm.slot],
             ))
             .ok()?;
-        println!("{:?}", response);
         if let Some(response) = response {
             if response.payload.len() != NONCE_LENGTH {
                 return None;
@@ -186,7 +182,6 @@ impl<'b> NfcDevice<'b> {
     pub fn send(&self, command: Command) -> Result<Option<Response>, NfcError> {
         let mut response = vec![0u8; command.le.unwrap_or(0).into()];
         let command: Vec<u8> = command.into();
-        println!("{:02X?}", command);
         let response_size = unsafe {
             ffi::nfc_initiator_transceive_bytes(
                 self.device,
@@ -197,7 +192,6 @@ impl<'b> NfcDevice<'b> {
                 2000,
             )
         };
-        println!("Got {} bytes back!", response_size);
         if response_size < 0 {
             return Err(NfcError::Unknown);
         }
@@ -206,7 +200,6 @@ impl<'b> NfcDevice<'b> {
         }
         // convert response to a vec, from 0..response_size:
         response.truncate(response_size as usize);
-        println!("(The bytes we got back were) {:02X?}", response);
 
         Ok(Some(Response::from(response)))
     }
@@ -214,11 +207,9 @@ impl<'b> NfcDevice<'b> {
 
 fn sign_message(realm: &Realm, message: &[u8]) -> Result<Vec<u8>, NfcError> {
     // Sign message using the PKCS#8 encoded EC key realm.private_key using SHA256
-    println!("{}", realm.signing_private_key.clone());
     let pkey =
         PKey::private_key_from_pem(CString::new(realm.signing_private_key.clone()).unwrap().as_bytes())
             .unwrap();
-    println!("Type is {:?}", pkey.id());
     let mut signer = Signer::new(MessageDigest::sha384(), &pkey).unwrap();
     signer.update(message).unwrap();
     Ok(signer.sign_to_vec().unwrap())
@@ -230,10 +221,8 @@ fn decrypt_message(realm: &Realm, message: &[u8]) -> Result<Vec<u8>, NfcError> {
             .unwrap();
     let decrypter = Decrypter::new(pkey.as_ref()).unwrap();
     let message_len = decrypter.decrypt_len(message).unwrap();
-    println!("Message len {}", message_len);
     let mut output = vec![0; message_len];
     let length = decrypter.decrypt(message, output.as_mut_slice()).unwrap();
-    println!("Finished decryption!");
     Ok(output[..length].into())
 }
 
@@ -247,11 +236,8 @@ impl NfcTag for MobileNfcTag {
         signature_data[0..NONCE_LENGTH].copy_from_slice(&self.nonce);
         signature_data[NONCE_LENGTH..].copy_from_slice(&our_nonce);
         let mut signature = sign_message(realm, &signature_data)?;
-        println!("Signature (length: {}): {:02X?}", signature.len(), signature);
         // Add our_nonce to signature
         signature.extend_from_slice(&our_nonce);
-        println!("APDU Payload data (length: {}): {:02X?}",
-                 signature.len(), signature);
 
         let encrypted_association = nfc_device
             .send(Command::new_with_payload_le(
@@ -265,13 +251,11 @@ impl NfcTag for MobileNfcTag {
             ))?
             .ok_or(NfcError::NoResponse)?;
         let payload = encrypted_association.payload.as_slice();
-        println!("Encrypted payload: {:02X?}", payload);
         let payload = decrypt_message(realm, payload)?;
         // take last 8 bytes of association as the nonce
         let nonce = &payload[payload.len()-self.nonce.len()..payload.len()];
         // take the rest as the association
         let association_id = &payload[0..payload.len()-self.nonce.len()];
-        println!("Our Nonce: {:02X?}, Their Nonce: {:02X?}, Association ID: {:02X?}", our_nonce, nonce, association_id);
 
         if our_nonce != nonce {
             return Err(NfcError::NonceMismatch);
