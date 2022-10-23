@@ -1,27 +1,18 @@
+use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
-use std::ffi::{CString, CStr};
 
 use libgatekeeper_sys::ffi::{
-    context_t,
-    nfc_init,
-    nfc_open,
-    nfc_close,
-    nfc_exit,
-    freefare_get_tags,
-    freefare_get_tag_uid,
-    freefare_get_tag_friendly_name,
-    freefare_free_tags,
-    realm_create,
-    realm_free,
-    issue_tag,
-    authenticate_tag,
+    authenticate_tag, context_t, freefare_free_tags, freefare_get_tag_friendly_name,
+    freefare_get_tag_uid, freefare_get_tags, issue_tag, nfc_close, nfc_exit, nfc_init, nfc_open,
+    realm_create, realm_free,
 };
 
 fn main() {
-
     // Initialize the NFC Context
     let mut context = MaybeUninit::<*mut context_t>::uninit();
-    unsafe { nfc_init(context.as_mut_ptr()); }
+    unsafe {
+        nfc_init(context.as_mut_ptr());
+    }
     if context.as_mut_ptr() == std::ptr::null_mut() {
         println!("Failed to initialize NFC context");
         return;
@@ -36,7 +27,10 @@ fn main() {
 
     let tag_type = unsafe { freefare_get_tag_friendly_name(tag) };
     let tag_type_str = unsafe { CStr::from_ptr(tag_type) };
-    println!("Tag type: {}", tag_type_str.to_str().expect("should get string"));
+    println!(
+        "Tag type: {}",
+        tag_type_str.to_str().expect("should get string")
+    );
 
     let tag_uid = unsafe { freefare_get_tag_uid(tag) };
     let tag_uid_str = unsafe { CStr::from_ptr(tag_uid) };
@@ -51,14 +45,16 @@ fn main() {
         let update = CString::new("96e874711115cde3ca530c9a15c4838a").unwrap();
         let public = CString::new("-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEUSCSsyBgHLLs9d5+p+cTGljR9aeFZ19D\ngBkuomyNPEy2rYI/0g9jeftRkkRXlZNQG/jk8PNtKuYoq4cKTYnMiZEiIcHq6fRi\nusrdYdkrS2iau+xENfzkkouvYJwarMtu\n-----END PUBLIC KEY-----\n").unwrap();
         let private = CString::new("-----BEGIN EC PRIVATE KEY-----\nMIGkAgEBBDCYfNkZFFqtgPRwxWy3SWfNvznHO0V5CNOlysmE3jXOGtO/99XpmKx4\nAsPFrMm6iragBwYFK4EEACKhZANiAARRIJKzIGAcsuz13n6n5xMaWNH1p4VnX0OA\nGS6ibI08TLatgj/SD2N5+1GSRFeVk1Ab+OTw820q5iirhwpNicyJkSIhwerp9GK6\nyt1h2StLaJq77EQ1/OSSi69gnBqsy24=\n-----END EC PRIVATE KEY-----\n").unwrap();
-        realm_create(0,
-                     name.as_ptr(),
-                     association.as_ptr(),
-                     auth.as_ptr(),
-                     read.as_ptr(),
-                     update.as_ptr(),
-                     public.as_ptr(),
-                     private.as_ptr())
+        realm_create(
+            0,
+            name.as_ptr(),
+            association.as_ptr(),
+            auth.as_ptr(),
+            read.as_ptr(),
+            update.as_ptr(),
+            public.as_ptr(),
+            private.as_ptr(),
+        )
     };
 
     let realms = &mut realm;

@@ -11,3 +11,8 @@ description = "Rust Bindings for libgatekeeper"
 repository = "https://github.com/mstrodl/libgatekeeper-sys"
 
 [dependencies]
+#apdu = "0.2.1"
+apdu = { path = "../apdu-rs/apdu" }
+openssl = "0.10.41"
+rand = "0.8.5"
+scopeguard = "1.1.0"
