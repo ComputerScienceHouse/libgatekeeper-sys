@@ -126,7 +126,11 @@ extern "C" {
         pnt: *mut nfc_target,
     ) -> c_int;
     pub fn nfc_initiator_deselect_target(device: *mut device_t) -> c_int;
-    pub fn nfc_device_set_property_bool(pnd: *mut device_t, property: nfc_property, bEnable: u8) -> c_int;
+    pub fn nfc_device_set_property_bool(
+        pnd: *mut device_t,
+        property: nfc_property,
+        bEnable: u8,
+    ) -> c_int;
 }
 
 #[link(name = "freefare")]

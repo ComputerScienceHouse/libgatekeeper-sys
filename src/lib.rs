@@ -5,12 +5,12 @@ use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use apdu::{Command, Response};
-use openssl::{encrypt::Decrypter, pkey::PKey, sign::Signer, hash::MessageDigest};
+use apdu_core::{Command, Response};
+use openssl::{encrypt::Decrypter, hash::MessageDigest, pkey::PKey, sign::Signer};
 use rand::Rng;
 
 pub mod ffi;
-use crate::ffi::{ModulationType, BaudRate, Modulation, NfcProperty};
+use crate::ffi::{BaudRate, Modulation, ModulationType, NfcProperty};
 
 pub struct Nfc {
     context: *mut ffi::context_t,
@@ -124,9 +124,7 @@ impl<'b> NfcDevice<'b> {
         })
     }
     pub fn first_mobile_tag(&self, realm: &Realm) -> Option<MobileNfcTag> {
-        if unsafe {
-            ffi::nfc_initiator_init(self.device)
-        } < 0 {
+        if unsafe { ffi::nfc_initiator_init(self.device) } < 0 {
             eprintln!("Couldn't init NFC initiator!!!");
             unsafe {
                 let msg = CString::new("Init NFC initiator :(").unwrap();
@@ -144,15 +142,24 @@ impl<'b> NfcDevice<'b> {
 
         unsafe {
             let mut nt = MaybeUninit::uninit();
-            if ffi::nfc_initiator_select_passive_target(self.device, Modulation {
-                nmt: ModulationType::NMT_ISO14443A,
-                nbr: BaudRate::NBR_106,
-            }, std::ptr::null(), 0, nt.as_mut_ptr()) <= 0 {
+            if ffi::nfc_initiator_select_passive_target(
+                self.device,
+                Modulation {
+                    nmt: ModulationType::NMT_ISO14443A,
+                    nbr: BaudRate::NBR_106,
+                },
+                std::ptr::null(),
+                0,
+                nt.as_mut_ptr(),
+            ) <= 0
+            {
                 // println!("No tag found");
                 return None;
             }
         }
-        let guard = NfcTargetGuard { device: self.device };
+        let guard = NfcTargetGuard {
+            device: self.device,
+        };
 
         let response = self
             .send(Command::new_with_payload_le(
@@ -207,18 +214,24 @@ impl<'b> NfcDevice<'b> {
 
 fn sign_message(realm: &Realm, message: &[u8]) -> Result<Vec<u8>, NfcError> {
     // Sign message using the PKCS#8 encoded EC key realm.private_key using SHA256
-    let pkey =
-        PKey::private_key_from_pem(CString::new(realm.signing_private_key.clone()).unwrap().as_bytes())
-            .unwrap();
+    let pkey = PKey::private_key_from_pem(
+        CString::new(realm.signing_private_key.clone())
+            .unwrap()
+            .as_bytes(),
+    )
+    .unwrap();
     let mut signer = Signer::new(MessageDigest::sha384(), &pkey).unwrap();
     signer.update(message).unwrap();
     Ok(signer.sign_to_vec().unwrap())
 }
 
 fn decrypt_message(realm: &Realm, message: &[u8]) -> Result<Vec<u8>, NfcError> {
-    let pkey =
-        PKey::private_key_from_pem(CString::new(realm.asymmetric_private_key.clone()).unwrap().as_bytes())
-            .unwrap();
+    let pkey = PKey::private_key_from_pem(
+        CString::new(realm.asymmetric_private_key.clone())
+            .unwrap()
+            .as_bytes(),
+    )
+    .unwrap();
     let decrypter = Decrypter::new(pkey.as_ref()).unwrap();
     let message_len = decrypter.decrypt_len(message).unwrap();
     let mut output = vec![0; message_len];
@@ -227,7 +240,11 @@ fn decrypt_message(realm: &Realm, message: &[u8]) -> Result<Vec<u8>, NfcError> {
 }
 
 impl NfcTag for MobileNfcTag {
-    fn authenticate(&mut self, nfc_device: &NfcDevice<'_>, realm: &mut Realm) -> Result<String, NfcError> {
+    fn authenticate(
+        &mut self,
+        nfc_device: &NfcDevice<'_>,
+        realm: &mut Realm,
+    ) -> Result<String, NfcError> {
         println!("Authenticating! Sending signed nonce");
         println!("{} is the realm id", realm.slot);
         // Concatenate self.nonce and our_nonce
@@ -241,21 +258,16 @@ impl NfcTag for MobileNfcTag {
 
         let encrypted_association = nfc_device
             .send(Command::new_with_payload_le(
-                0xD0,
-                0x00,
-                0x00,
-                0x00,
-                // Encrypted value length is non-determinate
-                512,
-                signature,
+                0xD0, 0x00, 0x00, 0x00, // Encrypted value length is non-determinate
+                512, signature,
             ))?
             .ok_or(NfcError::NoResponse)?;
         let payload = encrypted_association.payload.as_slice();
         let payload = decrypt_message(realm, payload)?;
         // take last 8 bytes of association as the nonce
-        let nonce = &payload[payload.len()-self.nonce.len()..payload.len()];
+        let nonce = &payload[payload.len() - self.nonce.len()..payload.len()];
         // take the rest as the association
-        let association_id = &payload[0..payload.len()-self.nonce.len()];
+        let association_id = &payload[0..payload.len() - self.nonce.len()];
 
         if our_nonce != nonce {
             return Err(NfcError::NonceMismatch);
@@ -283,12 +295,20 @@ pub struct FreefareNfcTag<'a> {
 }
 
 pub trait NfcTag {
-    fn authenticate(&mut self, nfc_device: &NfcDevice<'_>, realm: &mut Realm) -> Result<String, NfcError>;
+    fn authenticate(
+        &mut self,
+        nfc_device: &NfcDevice<'_>,
+        realm: &mut Realm,
+    ) -> Result<String, NfcError>;
 }
 
 impl NfcTag for FreefareNfcTag<'_> {
     // TODO: None of this is super ideal...
-    fn authenticate(&mut self, _nfc_device: &NfcDevice<'_>, realm: &mut Realm) -> Result<String, NfcError> {
+    fn authenticate(
+        &mut self,
+        _nfc_device: &NfcDevice<'_>,
+        realm: &mut Realm,
+    ) -> Result<String, NfcError> {
         let mut association_id = [0u8; 37];
         let auth_result =
             unsafe { ffi::authenticate_tag(self.tag, realm.realm, association_id.as_mut_ptr()) };
