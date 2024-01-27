@@ -8,6 +8,8 @@ use std::ptr;
 use apdu_core::{Command, Response};
 use openssl::{encrypt::Decrypter, hash::MessageDigest, pkey::PKey, sign::Signer};
 use rand::Rng;
+use std::error::Error;
+use std::fmt::{self, Display, Formatter, Write};
 
 pub mod ffi;
 use crate::ffi::{BaudRate, Modulation, ModulationType, NfcProperty};
@@ -19,11 +21,24 @@ pub struct Nfc {
 #[derive(Debug)]
 pub enum NfcError {
     Unknown,
-    SendMismatch,
+    // SendMismatch,
     NonceMismatch,
     NoResponse,
-    CryptoError,
+    // CryptoError,
 }
+
+impl Display for NfcError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use NfcError::*;
+        match self {
+            Unknown => write!(f, "Unknown error"),
+            NonceMismatch => write!(f, "Nonce for mobile tag didn't match"),
+            NoResponse => write!(f, "Didn't get a response from the mobile tag"),
+        }
+    }
+}
+
+impl Error for NfcError {}
 
 impl Nfc {
     pub fn new() -> Option<Self> {
@@ -275,8 +290,10 @@ impl NfcTag for MobileNfcTag {
 
         Ok(association_id
             .iter()
-            .map(|id| format!("{:02x}", id))
-            .collect::<String>())
+            .fold(String::new(), |mut collector, id| {
+                write!(collector, "{:02x}", id).unwrap();
+                collector
+            }))
     }
 }
 
