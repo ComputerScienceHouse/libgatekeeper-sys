@@ -55,6 +55,10 @@ impl Nfc {
     }
 
     pub fn gatekeeper_device(&mut self, conn_str: String) -> Option<NfcDevice> {
+        self.inner_device(conn_str.clone())
+            .map(|device| NfcDevice { device, conn_str })
+    }
+    fn inner_device(&self, conn_str: String) -> Option<NfcDeviceInner> {
         let device_string = CString::new(conn_str).unwrap();
         let device = unsafe {
             let device_ptr = ffi::nfc_open(self.context, device_string.as_ptr());
@@ -63,7 +67,7 @@ impl Nfc {
             }
             device_ptr
         };
-        Some(NfcDevice {
+        Some(NfcDeviceInner {
             device,
             _context: self,
         })
@@ -78,9 +82,14 @@ impl Drop for Nfc {
     }
 }
 
-pub struct NfcDevice<'a> {
+struct NfcDeviceInner<'a> {
     device: *mut ffi::device_t,
     _context: &'a Nfc,
+}
+
+pub struct NfcDevice<'a> {
+    device: NfcDeviceInner<'a>,
+    conn_str: String,
 }
 
 const NONCE_LENGTH: usize = 8;
@@ -109,10 +118,10 @@ impl Drop for NfcTargetGuard {
 }
 
 impl<'b> NfcDevice<'b> {
-    pub fn authenticate_tag(&self, realm: &mut Realm) -> Result<Option<String>, NfcError> {
-        if let Some(mut tag) = self.first_tag() {
+    pub fn authenticate_tag(&mut self, realm: &mut Realm) -> Result<Option<String>, NfcError> {
+        if let Some(mut tag) = self.first_mobile_tag(realm) {
             tag.authenticate(self, realm).map(Some)
-        } else if let Some(mut tag) = self.first_mobile_tag(realm) {
+        } else if let Some(mut tag) = self.first_tag() {
             tag.authenticate(self, realm).map(Some)
         } else {
             Ok(None)
@@ -120,7 +129,7 @@ impl<'b> NfcDevice<'b> {
     }
     pub fn first_tag(&self) -> Option<FreefareNfcTag> {
         let (tags, tag) = unsafe {
-            let tags = ffi::freefare_get_tags(self.device);
+            let tags = ffi::freefare_get_tags(self.device.device);
             if tags.is_null() {
                 return None;
             }
@@ -138,27 +147,37 @@ impl<'b> NfcDevice<'b> {
             _device_lifetime: PhantomData,
         })
     }
-    pub fn first_mobile_tag(&self, realm: &Realm) -> Option<MobileNfcTag> {
-        if unsafe { ffi::nfc_initiator_init(self.device) } < 0 {
-            eprintln!("Couldn't init NFC initiator!!!");
-            unsafe {
-                let msg = CString::new("Init NFC initiator :(").unwrap();
-                ffi::nfc_perror(self.device, msg.as_ptr())
-            };
-            return None;
+    pub fn first_mobile_tag(&mut self, realm: &Realm) -> Option<MobileNfcTag> {
+        loop {
+            if unsafe { ffi::nfc_initiator_init(self.device.device) } < 0 {
+                eprintln!("Couldn't init NFC initiator!!!");
+                // let error_code = unsafe { ffi::nfc_device_get_last_error(self.device.device) };
+                unsafe {
+                    let msg = CString::new("Failed to init device initiator :(").unwrap();
+                    ffi::nfc_perror(self.device.device, msg.as_ptr())
+                };
+                eprintln!("Resetting the device and trying again!");
+                self.device = self.device._context.inner_device(self.conn_str.clone())?;
+                continue;
+            }
+            break;
         }
 
         unsafe {
-            ffi::nfc_device_set_property_bool(self.device, NfcProperty::NP_ACTIVATE_FIELD, 1)
+            ffi::nfc_device_set_property_bool(self.device.device, NfcProperty::NP_ACTIVATE_FIELD, 1)
         };
         unsafe {
-            ffi::nfc_device_set_property_bool(self.device, NfcProperty::NP_INFINITE_SELECT, 0)
+            ffi::nfc_device_set_property_bool(
+                self.device.device,
+                NfcProperty::NP_INFINITE_SELECT,
+                0,
+            )
         };
 
         unsafe {
             let mut nt = MaybeUninit::uninit();
             if ffi::nfc_initiator_select_passive_target(
-                self.device,
+                self.device.device,
                 Modulation {
                     nmt: ModulationType::NMT_ISO14443A,
                     nbr: BaudRate::NBR_106,
@@ -173,7 +192,7 @@ impl<'b> NfcDevice<'b> {
             }
         }
         let guard = NfcTargetGuard {
-            device: self.device,
+            device: self.device.device,
         };
 
         let response = self
@@ -206,7 +225,7 @@ impl<'b> NfcDevice<'b> {
         let command: Vec<u8> = command.into();
         let response_size = unsafe {
             ffi::nfc_initiator_transceive_bytes(
-                self.device,
+                self.device.device,
                 command.as_ptr(),
                 command.len(),
                 response.as_mut_ptr(),
@@ -297,7 +316,7 @@ impl NfcTag for MobileNfcTag {
     }
 }
 
-impl Drop for NfcDevice<'_> {
+impl Drop for NfcDeviceInner<'_> {
     fn drop(&mut self) {
         unsafe {
             ffi::nfc_close(self.device);

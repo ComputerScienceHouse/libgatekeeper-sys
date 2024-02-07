@@ -107,6 +107,7 @@ extern "C" {
     ) -> u32;
     pub fn nfc_open(context: *mut context_t, device_id: *const c_char) -> *mut device_t;
     pub fn nfc_perror(device: *const device_t, message: *const c_char);
+    pub fn nfc_device_get_last_error(device: *const device_t) -> c_int;
     pub fn nfc_initiator_init(device: *mut device_t) -> c_int;
     pub fn nfc_close(context: *mut device_t);
     pub fn nfc_exit(context: *mut context_t);
